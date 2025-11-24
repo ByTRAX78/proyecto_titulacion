@@ -37,7 +37,7 @@ class _NavigationMenuState extends State<NavigationMenu> {
             currentPageIndex = index;
           });
         },
-        indicatorColor: Colors.amber,
+        indicatorColor: Colors.green,
         selectedIndex: currentPageIndex,
         destinations: const <Widget>[
           NavigationDestination(

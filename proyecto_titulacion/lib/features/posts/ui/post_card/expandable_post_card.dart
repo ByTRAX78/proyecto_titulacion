@@ -1,28 +1,100 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-class ExpandablePostCard extends StatefulWidget {
-  final int index;
-  const ExpandablePostCard({super.key, required this.index});
+import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:flutter/material.dart';
+import 'package:proyecto_titulacion/features/posts/controller/posts_list_controller.dart';
+import 'package:proyecto_titulacion/features/posts/service/posts_api_service.dart';
+import 'package:proyecto_titulacion/features/posts/ui/edit_post_sheet.dart';
+import 'package:proyecto_titulacion/models/Post.dart';
+import 'package:proyecto_titulacion/common/ui/widgets/storage_image.dart';
+import 'package:device_calendar/device_calendar.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ExpandablePostCard extends ConsumerStatefulWidget {
+  final Post post;
+  const ExpandablePostCard({super.key, required this.post, required int index});
 
   @override
-  State<ExpandablePostCard> createState() => _ExpandablePostCardState();
+  ConsumerState<ExpandablePostCard> createState() => _ExpandablePostCardState();
 }
 
-class _ExpandablePostCardState extends State<ExpandablePostCard> {
+
+
+class _ExpandablePostCardState extends ConsumerState<ExpandablePostCard> {
   bool isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final post = widget.post;
+
+    
+    Future<void> _guardarEnCalendarioNativo(Post post) async {
+  if (post.dates == null || post.dates!.isEmpty) return;
+
+  final DeviceCalendarPlugin _deviceCalendarPlugin = DeviceCalendarPlugin();
+
+  // 1. PEDIR PERMISOS
+  var permissionsGranted = await _deviceCalendarPlugin.hasPermissions();
+  if (permissionsGranted.isSuccess && !permissionsGranted.data!) {
+    permissionsGranted = await _deviceCalendarPlugin.requestPermissions();
+    if (!permissionsGranted.isSuccess || !permissionsGranted.data!) {
+      print(" El usuario denegó el permiso");
+      return;
+    }
+  }
+
+  // 2. BUSCAR EL CALENDARIO POR DEFECTO
+  final calendarsResult = await _deviceCalendarPlugin.retrieveCalendars();
+  // Buscamos el calendario que sea "Default" y no sea de solo lectura
+  final calendar = calendarsResult.data?.firstWhere(
+    (c) => c.isDefault == true && c.isReadOnly == false,
+    orElse: () => calendarsResult.data!.first, // Si no hay default, agarramos el primero
+  );
+
+  if (calendar == null) {
+    print("No se encontró ningún calendario en el celular");
+    return;
+  }
+
+  // 3. GUARDAR LAS FECHAS
+  for (var dateTemporal in post.dates!) {
+    final fecha = DateTime.parse(dateTemporal.toString());
+    
+    final event = Event(
+      calendar.id,
+      title: "Evento: ${post.title}",
+      description: post.description ?? "Guardado desde TripsPlanner",
+      start: tz.TZDateTime.from(fecha, tz.local),
+      end: tz.TZDateTime.from(fecha.add(const Duration(hours: 2)), tz.local),
+      allDay: true,
+    );
+
+    final result = await _deviceCalendarPlugin.createOrUpdateEvent(event);
+    
+    if (result!.isSuccess && result.data != null) {
+      print("Fecha $fecha guardada con éxito en calendario ${calendar.name}");
+    } else {
+      print("Error guardando fecha: ${result.errors}");
+    }
+  }
+  
+  // Avisar al usuario al final
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('¡Fechas guardadas en tu calendario!'))
+    );
+  }
+}
+
     return Card(
       elevation: 0, 
       margin: const EdgeInsets.only(bottom: 12),
-      // Color gris suave constante (como pediste en la imagen de small screens)
       color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       
       child: InkWell(
-        // Al tocar, solo cambiamos el booleano
         onTap: () {
           setState(() {
             isExpanded = !isExpanded;
@@ -30,80 +102,130 @@ class _ExpandablePostCardState extends State<ExpandablePostCard> {
         },
         child: Column(
           children: [
-            // 1. ENCABEZADO (Siempre visible y SIEMPRE IGUAL)
-            // No cambia de forma, por eso no se traba.
             ListTile(
               contentPadding: const EdgeInsets.all(12),
-              // Imagen pequeña a la izquierda
               leading: Container(
-                width: 56, height: 56,
+                width: 55, height: 90,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(90),
                   image: DecorationImage(
-                    image: NetworkImage('https://picsum.photos/seed/${widget.index}/200'),
-                    fit: BoxFit.cover,
+                    image: ResizeImage(
+                      NetworkImage('https://picsum.photos/seed/${post.id}/200'),
+                      width: 200,
+                    ),
                   ),
                 ),
               ),
               // Textos
-              title: Text('Juego #${widget.index}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(isExpanded ? 'Detalles mostrados' : 'Toca para expandir'),
-              // La flecha gira sola, es una animación muy barata para el CPU
-              trailing: AnimatedRotation(
+              title: Text(
+                isExpanded ? 
+                [
+                  post.authorName, 
+                  post.authorMiddle, 
+                  post.authorFamily].where((text) => text != null && text.isNotEmpty).join(' ') 
+                : post.title , 
+                style: const TextStyle(fontWeight: FontWeight.bold) ),
+                subtitle: Text(isExpanded ? post.createdAt.toString() : "Toca para expandir"),
+                trailing: AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 200),
                 child: const Icon(Icons.keyboard_arrow_down),
               ),
             ),
 
-            // 2. CONTENIDO OCULTO (Solo aparece abajo)
-            // AnimatedSize solo tiene que "empujar" los pixeles, no redibujar imágenes.
             AnimatedSize(
               duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
+              curve: Curves.easeOut,                          
               alignment: Alignment.topCenter,
               child: isExpanded 
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Imagen grande
                       SizedBox(
-                        height: 200,
                         width: double.infinity,
-                        child: Image.network(
-                          'https://picsum.photos/seed/${widget.index}/500/300',
-                          fit: BoxFit.cover,
-                        ),
+                        child: (post.images != null && post.images!.isNotEmpty)
+                          ? StorageImage(
+                            imageKey: post.images!.first,
+                          
+                            fit: BoxFit.cover,
+                          ) : Container(color: Colors.grey,),
                       ),
-                      
-                      // Texto de descripción
                       Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          'Aquí está el resto de la información. Al mantener el encabezado fijo y solo deslizar esto hacia abajo, el rendimiento es mucho mejor.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                post.title
+                                ,style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                post.description
+                              )
+                            ],
+                          )
                       ),
-
-                      // Botones
+                      //Fechas
+                      if (post.dates?.isNotEmpty == true)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Wrap(
+                              spacing: 8,
+                              children: post.dates!
+                                  .map((d) => Chip(label: Text(d.format())))
+                                  .toList(),
+                            ),
+                          ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            TextButton(onPressed: (){}, child: const Text('Cerrar')),
+                            TextButton(
+                              onPressed: () async {
+                                await ref.read(postsListControllerProvider.notifier).removePost(post);
+                              }, 
+                              child: const Text('Borrar')
+                            ),
                             const SizedBox(width: 8),
                             FilledButton.icon(
-                              onPressed: (){}, 
-                              icon: const Icon(Icons.download, size: 18),
-                              label: const Text('Instalar')
+                              onPressed: () async {
+                               showModalBottomSheet(
+                                context: context, 
+                                isScrollControlled: true,
+                                useSafeArea: true,
+                                showDragHandle: true,
+                                builder: (context) => SizedBox(
+                                  height: MediaQuery.of(context).size.height * 0.9,
+                                  child: EditPostSheet(post: post), 
+                                ),
+                               );
+                              }, 
+                              icon: const Icon(Icons.update_outlined, size: 18),
+                              label: const Text('Modificar'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.amber,  
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: () async {
+                               _guardarEnCalendarioNativo(post);
+                              }, 
+                              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                              label: const Text('Agendar'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.amber,  
+                              ),
                             ),
                           ],
-                        ),
-                      )
+                        )
+                      ),
+                      
                     ],
                   ) 
-                : const SizedBox.shrink(), // Si está cerrado, no ocupa espacio
+                : const SizedBox.shrink(),
             ),
           ],
         ),
