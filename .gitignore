@@ -15,8 +15,6 @@
 
 # --- FVM (GESTOR DE FLUTTER) ---
 # Ignoramos el SDK pesado (cientos de megas)
-.fvm/flutter_sdk
-.fvm/versions
 # PERO permitimos el archivo de configuración (para que sepan qué versión usar)
 !.fvm/fvm_config.json
 
@@ -119,3 +117,6 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+
+# FVM Version Cache
+.fvm/

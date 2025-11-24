@@ -6,6 +6,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:proyecto_titulacion/features/auth/ui/login_page.dart';
 import 'package:proyecto_titulacion/features/auth/ui/register_page.dart';
 import 'package:proyecto_titulacion/features/trip/ui/trips_list/trips_list_page.dart';
+import 'package:proyecto_titulacion/common/ui/main_layout.dart';
 
 final router = GoRouter(
   initialLocation: '/login',
@@ -21,7 +22,7 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/home',
-      builder: (_, __) => const TripsListPage(),
+      builder: (_, __) => const MyMainLayout(),
     ),
   ],
 
